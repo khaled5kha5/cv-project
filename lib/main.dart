@@ -1,3 +1,4 @@
+import 'package:cv_project1/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cv_project1/firebase_options.dart';
@@ -22,7 +23,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
       home: const AuthGate(),
     );
   }
