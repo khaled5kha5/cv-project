@@ -231,14 +231,14 @@ class CvBuilderProvider extends ChangeNotifier {
         fileExtension: extension,);
 
       _profileImageUrl = uploadedUrl;
+      notifyListeners();
 
     } catch (e) {
-      throw Exception('Error uploading profile image: $e');
-    } finally {
+      print('Error uploading profile image: $e');
       _isUploadingImage = false;
       notifyListeners();
+      rethrow;
     }
-
   }
 
 
