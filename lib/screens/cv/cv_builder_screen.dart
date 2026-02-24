@@ -1,29 +1,23 @@
+
+import 'package:cv_project1/providers/cv_builder_provider.dart';
+import 'package:cv_project1/models/cv_model.dart';
+import 'package:cv_project1/screens/cv/previewTap_template.dart';
+import 'package:cv_project1/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:cv_project1/models/cv.dart';
-import 'package:cv_project1/models/education.dart';
-import 'package:cv_project1/models/experience.dart';
-import 'package:cv_project1/models/project.dart';
-import 'package:cv_project1/models/skill.dart';
-import 'package:cv_project1/services/cv_service.dart';
-import 'package:cv_project1/services/storage_service.dart';
+import 'package:provider/provider.dart';
 
-class CVBuilderScreen extends StatefulWidget {
-  final String? cvId; // For editing existing CV
-
-  const CVBuilderScreen({Key? key, this.cvId}) : super(key: key);
+class CvBuilderScreen extends StatefulWidget {
+  final String? cvId;
+  const CvBuilderScreen({super.key, this.cvId});
 
   @override
-  State<CVBuilderScreen> createState() => _CVBuilderScreenState();
+  State<CvBuilderScreen> createState() => _CvBuilderScreenState();
 }
 
-class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderStateMixin {
-  late TabController _tabController;
-  bool _isLoading = false;
-  CV? _cv;
+class _CvBuilderScreenState extends State<CvBuilderScreen> with TickerProviderStateMixin{
 
-  // Personal Info Controllers
+  late TabController _tabController;
+
   final _nameController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -32,57 +26,47 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
   final _roleController = TextEditingController();
   final _summaryController = TextEditingController();
 
-  // Education and Experience lists
-  List<Education> _educations = [];
-  List<Experience> _experiences = [];
-  List<Project> _projects = [];
-  List<Skill> _skills = [];
-  final List<String> _cvStyles = const ['Classic', 'Modern', 'Minimal'];
-  String _selectedStyle = 'Classic';
-  String? _profileImageUrl;
-  bool _isUploadingImage = false;
-
   final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _locationController.dispose();
+    _roleController.dispose();
+    _summaryController.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
-    _loadCVIfEditing();
-  }
-
-  Future<void> _loadCVIfEditing() async {
-    if (widget.cvId != null) {
-      setState(() => _isLoading = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        final cv = await CVService.instance.getCV(widget.cvId!);
-        if (cv != null) {
-          setState(() {
-            _cv = cv;
-            _nameController.text = cv.name;
-            _fullNameController.text = cv.fullName ?? '';
-            _emailController.text = cv.email ?? '';
-            _phoneController.text = cv.phone ?? '';
-            _locationController.text = cv.location ?? '';
-            _roleController.text = cv.role ?? '';
-            _summaryController.text = cv.summary ?? '';
-            _educations = cv.educations ?? [];
-            _experiences = cv.experiences ?? [];
-            _projects = cv.projects ?? [];
-            _skills = cv.skills ?? [];
-            _selectedStyle = cv.styleTemplate ?? 'Classic';
-            _profileImageUrl = cv.profileImage;
-          });
-        }
+        await context.read<CvBuilderProvider>().initialize(
+          cvId: widget.cvId,
+          nameController: _nameController,
+          fullNameController: _fullNameController,
+          emailController: _emailController,
+          phoneController: _phoneController,
+          locationController: _locationController,
+          roleController: _roleController,
+          summaryController: _summaryController,
+        );
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading CV: $e')));
-      } finally {
-        setState(() => _isLoading = false);
       }
-    }
+    });
   }
 
   Future<void> _saveCV() async {
+    final cvProvider = context.read<CvBuilderProvider>();
+
     if (!_formKey.currentState!.validate()) {
       _tabController.animateTo(0);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,33 +75,17 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
       return;
     }
 
-    setState(() => _isLoading = true);
     try {
-      final cv = CV(
-        id: _cv?.id,
-        name: _nameController.text.trim(),
-        fullName: _fullNameController.text.trim(),
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
-        location: _locationController.text.trim(),
-        role: _roleController.text.trim(),
-        summary: _summaryController.text.trim(),
-        profileImage: _profileImageUrl,
-        styleTemplate: _selectedStyle,
-        educations: _educations,
-        experiences: _experiences,
-        projects: _projects,
-        skills: _skills,
+      await cvProvider.saveCv(
+        cvId: widget.cvId,
+        cvNameController: _nameController,
+        fullNameController: _fullNameController,
+        emailController: _emailController,
+        phoneController: _phoneController,
+        locationController: _locationController,
+        roleController: _roleController,
+        summaryController: _summaryController,
       );
-
-      if (widget.cvId != null) {
-        print('Updating CV with ID: ${widget.cvId}');
-        await CVService.instance.updateCVInfo(widget.cvId!, cv);
-      } else {
-        print('Creating new CV');
-        final newId = await CVService.instance.createCV(cv);
-        print('CV created with ID: $newId');
-      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -135,46 +103,14 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           duration: const Duration(seconds: 5),
         ),
       );
-    } finally {
-      setState(() => _isLoading = false);
     }
   }
 
   Future<void> _pickAndUploadProfileImage() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in before uploading a picture.')),
-      );
-      return;
-    }
-
-    final picker = ImagePicker();
-    final selected = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-
-    if (selected == null) return;
-
-    setState(() => _isUploadingImage = true);
     try {
-      final bytes = await selected.readAsBytes();
-      final extension = selected.name.contains('.')
-          ? selected.name.split('.').last
-          : 'jpg';
-
-      final uploadedUrl = await StorageService.instance.uploadProfileImage(
-        userId: user.uid,
-        bytes: bytes,
-        fileExtension: extension,
-      );
+      await context.read<CvBuilderProvider>().uploadProfileImage();
 
       if (!mounted) return;
-      setState(() {
-        _profileImageUrl = uploadedUrl;
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -190,29 +126,14 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isUploadingImage = false);
-      }
     }
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _locationController.dispose();
-    _roleController.dispose();
-    _summaryController.dispose();
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_isLoading && widget.cvId != null) {
+    final cvProvider = context.watch<CvBuilderProvider>();
+
+    if (cvProvider.isLoading && widget.cvId != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('CV Builder')),
         body: const Center(child: CircularProgressIndicator()),
@@ -225,12 +146,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Personal Info', icon: Icon(Icons.person)),
-            Tab(text: 'Education', icon: Icon(Icons.school)),
-            Tab(text: 'Experience', icon: Icon(Icons.work)),
-            Tab(text: 'Projects', icon: Icon(Icons.code)),
-            Tab(text: 'Skills', icon: Icon(Icons.star)),
-            Tab(text: 'Preview', icon: Icon(Icons.preview)),
+            Tab(icon: Icon(Icons.person)),
+            Tab(icon: Icon(Icons.school)),
+            Tab(icon: Icon(Icons.work)),
+            Tab(icon: Icon(Icons.code)),
+            Tab(icon: Icon(Icons.star)),
+            Tab(icon: Icon(Icons.preview)),
           ],
         ),
       ),
@@ -253,9 +174,9 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
         child: SizedBox(
           height: 56,
           child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _saveCV,
-            icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
-            label: Text(_isLoading ? 'Saving...' : 'Save CV'),
+            onPressed: cvProvider.isLoading ? null : _saveCV,
+            icon: cvProvider.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+            label: Text(cvProvider.isLoading ? 'Saving...' : 'Save CV'),
           ),
         ),
       ),
@@ -264,34 +185,48 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
 
   // ==================== Personal Info Tab ====================
   Widget _buildPersonalInfoTab() {
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final accentColor = Theme.of(context).colorScheme.primary;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Column(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Column(
               children: [
                 CircleAvatar(
                   radius: 44,
-                  backgroundImage: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
-                      ? NetworkImage(_profileImageUrl!)
+                  backgroundImage: cvProvider.profileImageUrl != null && cvProvider.profileImageUrl!.isNotEmpty
+                      ? NetworkImage(cvProvider.profileImageUrl!)
                       : null,
-                  child: (_profileImageUrl == null || _profileImageUrl!.isEmpty)
+                  child: (cvProvider.profileImageUrl == null || cvProvider.profileImageUrl!.isEmpty)
                       ? const Icon(Icons.person, size: 40)
                       : null,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: _isUploadingImage ? null : _pickAndUploadProfileImage,
-                  icon: _isUploadingImage
+                  onPressed: cvProvider.isUploadingImage ? null : _pickAndUploadProfileImage,
+                  icon: cvProvider.isUploadingImage
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.photo_library_outlined),
-                  label: Text(_isUploadingImage ? 'Uploading...' : 'Upload Picture'),
+                  label: Text(cvProvider.isUploadingImage ? 'Uploading...' : 'Upload Picture'),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
+                      side: BorderSide(color: accentColor),
+                    ),
                 ),
               ],
             ),
@@ -299,7 +234,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 24),
           Text(
             'Personal Information',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 30),
           ),
           const SizedBox(height: 8),
           Text(
@@ -309,6 +244,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 24),
           TextFormField(
             controller: _nameController,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'CV Name',
               prefixIcon: const Icon(Icons.label_outline),
@@ -320,6 +256,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 16),
           TextFormField(
             controller: _fullNameController,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'Full Name',
               prefixIcon: const Icon(Icons.person_outline),
@@ -331,6 +268,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'Email',
               prefixIcon: const Icon(Icons.email_outlined),
@@ -345,6 +283,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 16),
           TextFormField(
             controller: _phoneController,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               labelText: 'Phone',
@@ -356,6 +295,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 16),
           TextFormField(
             controller: _locationController,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'Location',
               prefixIcon: const Icon(Icons.location_on_outlined),
@@ -366,6 +306,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           const SizedBox(height: 16),
           TextFormField(
             controller: _roleController,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'Professional Role',
               prefixIcon: const Icon(Icons.work_outline),
@@ -378,6 +319,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           TextFormField(
             controller: _summaryController,
             maxLines: 5,
+            style: TextStyle(backgroundColor: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),),
             decoration: InputDecoration(
               labelText: 'Professional Summary',
               prefixIcon: const Icon(Icons.description_outlined),
@@ -392,22 +334,33 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           ),
         ],
       ),
+      ),
     );
   }
 
   // ==================== Education Tab ====================
   Widget _buildEducationTab() {
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final accentColor = Theme.of(context).colorScheme.primary;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Education',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Education',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 30),
           ),
           const SizedBox(height: 24),
-          if (_educations.isEmpty)
+          if (cvProvider.educationList.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32),
               child: Center(
@@ -418,11 +371,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
             ListView.separated(
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
-              itemCount: _educations.length,
+              itemCount: cvProvider.educationList.length,
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (_, index) {
-                final edu = _educations[index];
+                final edu = cvProvider.educationList[index];
                 return Card(
+                  color: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -435,16 +389,17 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(edu.degree, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                                  Text(edu.school, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+                                  Text(edu.university, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                  Text(edu.degree, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+                                  Text(edu.fieldOfStudy, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
                                 ],
                               ),
                             ),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _educations.removeAt(index))),
+                            
+                            IconButton(icon: Icon(Icons.edit, color: AppTheme.accent), onPressed: () => _showEducationDialog(edu)),
+                            IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => cvProvider.removeEducation(index)),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Text('${edu.startDate.year} - ${edu.endDate?.year ?? "Present"}', style: Theme.of(context).textTheme.bodySmall),
                       ],
                     ),
                   ),
@@ -459,15 +414,17 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           ),
         ],
       ),
+      ),
+      
+        
+      
     );
   }
 
   void _showEducationDialog(Education? education) {
-    final schoolCtrl = TextEditingController(text: education?.school ?? '');
+    final universityCtrl = TextEditingController(text: education?.university ?? '');
     final degreeCtrl = TextEditingController(text: education?.degree ?? '');
     final fieldCtrl = TextEditingController(text: education?.fieldOfStudy ?? '');
-    DateTime startDate = education?.startDate ?? DateTime.now();
-    DateTime? endDate = education?.endDate;
 
     showDialog(
       context: context,
@@ -478,8 +435,8 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: schoolCtrl,
-                decoration: InputDecoration(labelText: 'School/University', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                controller: universityCtrl,
+                decoration: InputDecoration(labelText: 'University', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -491,10 +448,6 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
                 controller: fieldCtrl,
                 decoration: InputDecoration(labelText: 'Field of Study', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
               ),
-              const SizedBox(height: 12),
-              Text('Start Date: ${startDate.year}-${startDate.month.toString().padLeft(2, '0')}'),
-              const SizedBox(height: 12),
-              Text('End Date: ${endDate?.year.toString() ?? "Present"}'),
             ],
           ),
         ),
@@ -503,21 +456,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           TextButton(
             onPressed: () {
               final edu = Education(
-                id: education?.id,
-                school: schoolCtrl.text,
+                id: education?.id ?? UniqueKey().toString(),
+                university: universityCtrl.text,
                 degree: degreeCtrl.text,
-                startDate: startDate,
-                endDate: endDate,
                 fieldOfStudy: fieldCtrl.text,
               );
-              setState(() {
-                if (education == null) {
-                  _educations.add(edu);
-                } else {
-                  final idx = _educations.indexOf(education);
-                  _educations[idx] = edu;
-                }
-              });
+              context.read<CvBuilderProvider>().upsertEducation(education, edu);
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
@@ -529,17 +473,27 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
 
   // ==================== Experience Tab ====================
   Widget _buildExperienceTab() {
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final accentColor = Theme.of(context).colorScheme.primary;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Work Experience',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Work Experience',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 30),
           ),
           const SizedBox(height: 24),
-          if (_experiences.isEmpty)
+          if (cvProvider.experienceList.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32),
               child: Center(
@@ -550,11 +504,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
             ListView.separated(
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
-              itemCount: _experiences.length,
+              itemCount: cvProvider.experienceList.length,
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (_, index) {
-                final exp = _experiences[index];
+                final exp = cvProvider.experienceList[index];
                 return Card(
+                  color: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -567,16 +522,18 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(exp.role, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                  Text(exp.position, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                                   Text(exp.company, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+                                  Text(exp.duration, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
                                 ],
                               ),
                             ),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _experiences.removeAt(index))),
+                            
+                            IconButton(icon: const Icon(Icons.edit, color: AppTheme.accent), onPressed: () => _showExperienceDialog(exp)),
+                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => cvProvider.removeExperience(index)),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Text('${exp.startDate.year} - ${exp.endDate?.year ?? "Present"}', style: Theme.of(context).textTheme.bodySmall),
+                        
                       ],
                     ),
                   ),
@@ -591,15 +548,14 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           ),
         ],
       ),
+      ),
     );
   }
 
   void _showExperienceDialog(Experience? experience) {
     final companyCtrl = TextEditingController(text: experience?.company ?? '');
-    final roleCtrl = TextEditingController(text: experience?.role ?? '');
-    final descCtrl = TextEditingController(text: experience?.description ?? '');
-    DateTime startDate = experience?.startDate ?? DateTime.now();
-    DateTime? endDate = experience?.endDate;
+    final positionCtrl = TextEditingController(text: experience?.position ?? '');
+    final durationCtrl = TextEditingController(text: experience?.duration ?? '');
 
     showDialog(
       context: context,
@@ -615,19 +571,14 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: roleCtrl,
+                controller: positionCtrl,
                 decoration: InputDecoration(labelText: 'Job Title', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: descCtrl,
-                maxLines: 3,
-                decoration: InputDecoration(labelText: 'Description', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                controller: durationCtrl,
+                decoration: InputDecoration(labelText: 'Duration', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
               ),
-              const SizedBox(height: 12),
-              Text('Start Date: ${startDate.year}-${startDate.month.toString().padLeft(2, '0')}'),
-              const SizedBox(height: 12),
-              Text('End Date: ${endDate?.year.toString() ?? "Present"}'),
             ],
           ),
         ),
@@ -636,21 +587,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           TextButton(
             onPressed: () {
               final exp = Experience(
-                id: experience?.id,
+                id: experience?.id ?? UniqueKey().toString(),
                 company: companyCtrl.text,
-                role: roleCtrl.text,
-                startDate: startDate,
-                endDate: endDate,
-                description: descCtrl.text,
+                position: positionCtrl.text,
+                duration: durationCtrl.text,
               );
-              setState(() {
-                if (experience == null) {
-                  _experiences.add(exp);
-                } else {
-                  final idx = _experiences.indexOf(experience);
-                  _experiences[idx] = exp;
-                }
-              });
+              context.read<CvBuilderProvider>().upsertExperience(experience, exp);
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
@@ -662,17 +604,27 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
 
   // ==================== Projects Tab ====================
   Widget _buildProjectsTab() {
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final accentColor = Theme.of(context).colorScheme.primary;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Projects',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Projects',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 30),
           ),
           const SizedBox(height: 24),
-          if (_projects.isEmpty)
+          if (cvProvider.projectList.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32),
               child: Center(
@@ -683,11 +635,12 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
             ListView.separated(
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
-              itemCount: _projects.length,
+              itemCount: cvProvider.projectList.length,
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (_, index) {
-                final project = _projects[index];
+                final project = cvProvider.projectList[index];
                 return Card(
+                  color: accentColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -702,17 +655,19 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
                                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                               ),
                             ),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _projects.removeAt(index))),
+                            
+                            IconButton(icon: const Icon(Icons.edit, color: AppTheme.accent), onPressed: () => _showProjectDialog(project)),
+                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => cvProvider.removeProject(index)),
                           ],
                         ),
-                        if (project.description != null && project.description!.isNotEmpty) ...[
+                          if (project.description != null && project.description!.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Text(project.description!, style: Theme.of(context).textTheme.bodySmall),
-                        ],
-                        if (project.link != null && project.link!.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          Text(project.link!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
-                        ],
+                          ],
+                        
+                          Text(project.link, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+                        
                       ],
                     ),
                   ),
@@ -727,6 +682,7 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -771,22 +727,21 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
                 );
                 return;
               }
+              if (linkCtrl.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a valid URL for the project link')),
+                );
+                return;
+              }
 
               final newProject = Project(
-                id: project?.id,
+                id: project?.id ?? UniqueKey().toString(),
                 title: titleCtrl.text.trim(),
                 description: descriptionCtrl.text.trim().isEmpty ? null : descriptionCtrl.text.trim(),
-                link: linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
+                link: linkCtrl.text.trim(),
               );
 
-              setState(() {
-                if (project == null) {
-                  _projects.add(newProject);
-                } else {
-                  final idx = _projects.indexOf(project);
-                  _projects[idx] = newProject;
-                }
-              });
+              context.read<CvBuilderProvider>().upsertProject(project, newProject);
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
@@ -798,17 +753,27 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
 
   // ==================== Skills Tab ====================
   Widget _buildSkillsTab() {
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final accentColor = Theme.of(context).colorScheme.primary;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'Skills',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 30),
           ),
           const SizedBox(height: 24),
-          if (_skills.isEmpty)
+          if (cvProvider.skillList.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32),
               child: Center(
@@ -819,11 +784,18 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _skills.map((skill) {
-                return Chip(
-                  label: Text(skill.name),
-                  avatar: Icon(Icons.star, size: 18),
-                  onDeleted: () => setState(() => _skills.remove(skill)),
+              children: cvProvider.skillList.map((skill) {
+                return InkWell(
+                  onTap: () => _showSkillDialog(skill),
+                  child: Chip(
+                    label: Text(skill.name),
+                    avatar: Icon(Icons.star, size: 18),
+                    onDeleted: () => cvProvider.removeSkill(cvProvider.skillList.indexOf(skill)),
+                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteIconColor: Colors.red,
+                    backgroundColor: accentColor.withOpacity(0.1),
+                    side: BorderSide(color: accentColor.withOpacity(0.2)),
+                  ),
                 );
               }).toList(),
             ),
@@ -835,12 +807,13 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           ),
         ],
       ),
+    ),
     );
   }
 
   void _showSkillDialog(Skill? skill) {
     final nameCtrl = TextEditingController(text: skill?.name ?? '');
-    String selectedLevel = skill?.level ?? 'Intermediate';
+    String selectedLevel = skill?.proficiency ?? 'Intermediate';
 
     showDialog(
       context: context,
@@ -867,18 +840,11 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
           TextButton(
             onPressed: () {
               final newSkill = Skill(
-                id: skill?.id,
+                id: skill?.id ?? UniqueKey().toString(),
                 name: nameCtrl.text,
-                level: selectedLevel,
+                proficiency: selectedLevel,
               );
-              setState(() {
-                if (skill == null) {
-                  _skills.add(newSkill);
-                } else {
-                  final idx = _skills.indexOf(skill);
-                  _skills[idx] = newSkill;
-                }
-              });
+              context.read<CvBuilderProvider>().upsertSkill(skill, newSkill);
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
@@ -890,158 +856,59 @@ class _CVBuilderScreenState extends State<CVBuilderScreen> with TickerProviderSt
 
   // ==================== Preview Tab ====================
   Widget _buildPreviewTab() {
-    final bool isModern = _selectedStyle == 'Modern';
-    final bool isMinimal = _selectedStyle == 'Minimal';
-
-    final headerColor = isModern
-        ? Theme.of(context).primaryColor
-        : isMinimal
-            ? Colors.transparent
-            : Theme.of(context).primaryColor.withOpacity(0.1);
-
-    final headerTextColor = isModern ? Colors.white : null;
+    final cvProvider = context.watch<CvBuilderProvider>();
+    final isDark =
+        Theme.of(context).brightness == Brightness.dark;
+    final sectionBg = isDark
+        ? Colors.white.withOpacity(0.05)
+        : Theme.of(context).colorScheme.surfaceContainerLow;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Choose CV Style', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _cvStyles.map((styleName) {
-              return ChoiceChip(
-                label: Text(styleName),
-                selected: _selectedStyle == styleName,
-                onSelected: (selected) {
-                  if (!selected) return;
-                  setState(() {
-                    _selectedStyle = styleName;
-                  });
-                },
-              );
-            }).toList(),
+          _previewSection(
+            title: 'Choose CV Template',
+            color: sectionBg,
+            child: templateSelector(cvProvider, context),
           ),
-          const SizedBox(height: 20),
-          // Header
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: headerColor,
-              borderRadius: BorderRadius.circular(12),
-              border: isMinimal ? Border.all(color: Colors.grey.shade300) : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) ...[
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundImage: NetworkImage(_profileImageUrl!),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                Text(
-                  _fullNameController.text.isEmpty ? 'Your Name' : _fullNameController.text,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: headerTextColor),
-                ),
-                Text(
-                  _roleController.text.isEmpty ? 'Professional Role' : _roleController.text,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: isModern ? Colors.white70 : Colors.grey[600]),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _locationController.text.isEmpty ? 'Location' : _locationController.text,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isModern ? Colors.white70 : null),
-                ),
-                Text(
-                  _emailController.text.isEmpty ? 'email@example.com' : _emailController.text,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isModern ? Colors.white70 : null),
-                ),
-              ],
-            ),
+          const SizedBox(height: 16),
+          _previewSection(
+            title: 'Choose CV Color Scheme',
+            color: sectionBg,
+            child: colorSelector(cvProvider),
           ),
-          const SizedBox(height: 24),
-          // Summary
-          if (_summaryController.text.isNotEmpty) ...[
-            Text('Professional Summary', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(_summaryController.text, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 24),
-          ],
-          // Experience
-          if (_experiences.isNotEmpty) ...[
-            Text('Experience', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ..._experiences.map((exp) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(exp.role, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  Text(exp.company, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
-                  if (exp.description != null) ...[
-                    const SizedBox(height: 4),
-                    Text(exp.description!, style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ],
-              ),
-            )),
-            const SizedBox(height: 24),
-          ],
-          // Education
-          if (_educations.isNotEmpty) ...[
-            Text('Education', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ..._educations.map((edu) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(edu.degree, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  Text(edu.school, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
-                ],
-              ),
-            )),
-            const SizedBox(height: 24),
-          ],
-          // Skills
-          if (_skills.isNotEmpty) ...[
-            Text('Skills', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _skills.map((skill) => Chip(label: Text(skill.name))).toList(),
-            ),
-            const SizedBox(height: 24),
-          ],
-          // Projects
-          if (_projects.isNotEmpty) ...[
-            Text('Projects', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ..._projects.map((project) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(project.title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  if (project.description != null && project.description!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(project.description!, style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                  if (project.link != null && project.link!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(project.link!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
-                  ],
-                ],
-              ),
-            )),
-          ],
+          const SizedBox(height: 16),
+          _previewSection(
+            title: 'CV Preview',
+            color: sectionBg,
+            child: cvPaper(buildLayout(cvProvider), context),
+          ),
         ],
       ),
     );
   }
 }
+Widget _previewSection({
+    required String title,
+    required Color color,
+    required Widget child,
+  }) =>
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold,color: color.computeLuminance() > 0.5 ? Colors.white : Colors.black)),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      );

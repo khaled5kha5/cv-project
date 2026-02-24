@@ -1,36 +1,71 @@
-import 'package:cv_project1/services/auth_service.dart';
+import 'package:cv_project1/providers/auth_provider.dart';
+import 'package:cv_project1/services/firestore_service.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({Key? key}) : super(key: key);
+  const RegisterScreen({super.key});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  // Instance of AuthService to handle authentication
-  final AuthService _authService = AuthService();
 
-  // Key for form validation
+  
+  final _firestore = FirestoreService();
+
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers for email, password, and confirm password fields
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
 
-  // For toggling password visibility
-  bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+      try {
+        await context.read<AuthProvider>().register(
+           _emailController.text,
+           _passwordController.text,
+        );
+        await _firestore.addUser(
+          uid: context.read<AuthProvider>().uid!,
+          email: _emailController.text,
+          username: _usernameController.text,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Registration successful!')),
+          );
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Registration failed: $e')),
+          );
+        }
+      }
+    
+  }
 
-  // For showing loading indicator during registration
-  bool isLoading = false;
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
     return Scaffold(
-      body: SafeArea(
+      body:  SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Form(
@@ -40,13 +75,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(height: 100),
+                const SizedBox(height: 60),
+                Icon(Icons.app_registration, size: 64, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 20),
 
-                // Title
-                const Text('Create Account', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+                Text(
+                  'Create Account',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                const Text('join us to continue', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.grey)),
-                const SizedBox(height: 50),
+                Text(
+                  'Join us to continue',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                TextFormField(
+                  controller: _usernameController,
+                  keyboardType: TextInputType.text,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    prefixIcon: Icon(Icons.person),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    // Basic username validation
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your username';
+                    }
+                    // Simple regex for username validation (alphanumeric and underscores, 3-16 characters)
+                    if (!RegExp(r'^[a-zA-Z0-9_]{3,16}$').hasMatch(value)) {
+                      return 'Please enter a valid username';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
 
                 // Email Field
                 TextFormField(
@@ -83,17 +152,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     suffixIcon: IconButton(
                       icon: Icon(
                         // Change icon based on visibility state
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
+                        authProvider.isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                      onPressed: authProvider.setPasswordVisible,
                     ),
                     border: const OutlineInputBorder(),
                   ),
                   // Use the visibility state to determine if the text should be obscured
-                  obscureText: !_isPasswordVisible,
+                  obscureText: !authProvider.isPasswordVisible,
                   validator: (value) {
                     // Basic password validation
                     if (value == null || value.isEmpty) {
@@ -128,17 +193,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     suffixIcon: IconButton(
                       icon: Icon(
                         // Change icon based on visibility state
-                        _isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () {
-                        setState(() {
-                          _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
-                        });
-                      },
+                        authProvider.isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                      onPressed: authProvider.setConfirmPasswordVisible,
                     ),
                     border: const OutlineInputBorder(),
                   ),
                   // Use the visibility state to determine if the text should be obscured
-                  obscureText: !_isConfirmPasswordVisible,
+                  obscureText: !authProvider.isConfirmPasswordVisible,
                   validator: (value) {
                     // Confirm password validation
                     if (value == null || value.isEmpty) {
@@ -156,13 +217,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // Register Button
                 SizedBox(
                   width: double.infinity,
-                  height: 60,
+                  height: 56,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : _register,
-                    // Show loading indicator on button when registering
-                    child: isLoading
-                        ? const CircularProgressIndicator()
-                        : const Text('Register'),
+                    onPressed: authProvider.isLoading ? null : _register,
+                    child: authProvider.isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Sign Up', style: TextStyle(fontSize: 16)),
                   ),
                 ),
 
@@ -185,26 +249,5 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     );
-  }
-
-  // Method to handle registration logic
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-    setState(() => isLoading = true);
-    try {
-      await _authService.register(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
-      Navigator.pop(context); // back to login
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: ${e.toString()}'), backgroundColor: Colors.red),
-      );
-    } finally {
-      setState(() => isLoading = false);
-    }
   }
 }
